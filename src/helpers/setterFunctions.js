@@ -7,20 +7,47 @@ import dgnr8ABI from '../Config/abis/dgnr8.json'
 export const deploySimpleErc721 = async (name,symbol,imgLink,royalty) => {
     console.log("function is called");
 
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
     let cont=await getNFTContract(contracts.NFT,dgnr8ABI)
 
     if(cont){
         
         let res = await cont.deploySimpleERC721(name,symbol,imgLink,royalty);
         if(res){
+            await delay(35000);
             console.log("res is-------->",res.hash)
+            return res.hash;
         }
        
-        return res;
+       
     }
     
 
 }
+
+export const deploySimpleErc1155 = async (imgLink,royalty) => {
+    console.log("function is called");
+
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
+    let cont=await getNFTContract(contracts.NFT,dgnr8ABI)
+
+    if(cont){
+        
+        let res = await cont.deploySimpleErc1155(imgLink,royalty);
+        if(res){
+            await delay(35000);
+            console.log("res is-------->",res.hash)
+            return res.hash;
+        }
+       
+       
+    }
+    
+
+}
+
 
 
 
