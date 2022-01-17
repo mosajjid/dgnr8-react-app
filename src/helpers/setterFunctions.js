@@ -1,6 +1,6 @@
 
 import contracts from "../Config/contracts";
-import { getNFTContract } from './getterFunctions'
+import { getContract } from './getterFunctions'
 import dgnr8ABI from '../Config/abis/dgnr8.json'
 // import BigNumber from 'bignumber.js';
 
@@ -9,7 +9,7 @@ export const deploySimpleErc721 = async (name,symbol,imgLink,royalty) => {
 
     const delay = ms => new Promise(res => setTimeout(res, ms));
 
-    let cont=await getNFTContract(contracts.NFT,dgnr8ABI)
+    let cont=await getContract(contracts.NFT,dgnr8ABI)
 
     if(cont){
         
@@ -31,7 +31,7 @@ export const deploySimpleErc1155 = async (imgLink,royalty) => {
 
     const delay = ms => new Promise(res => setTimeout(res, ms));
 
-    let cont=await getNFTContract(contracts.NFT,dgnr8ABI)
+    let cont=await getContract(contracts.NFT,dgnr8ABI)
 
     if(cont){
         

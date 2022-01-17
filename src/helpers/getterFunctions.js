@@ -1,5 +1,6 @@
 
 import dgnr8ABI from './../Config/abis/dgnr8.json'
+
 import { getAddress } from './addressHelper';
 import { getAccount, getUserBalance, getWeb3 } from './currentWalletHelper';
 import contracts from './../Config/contracts'
@@ -7,7 +8,7 @@ import contracts from './../Config/contracts'
 import { ethers } from 'ethers';
 
 
-export const getNFTContract = async (address,ABI) => {
+export const getContract = async (address,ABI) => {
     try {
      let add=contracts.NFT
      
@@ -27,6 +28,11 @@ export const getNFTContract = async (address,ABI) => {
     }
 
 }
+
+
+
+
+
 // export const getAllowance = async (tokenName, account) => {
 //   try {
 //     let web3 = await getWeb3();
