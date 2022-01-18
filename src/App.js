@@ -8,6 +8,8 @@ import contracts from './Config/contracts'
 import dgnr8ABI from "./Config/abis/dgnr8.json"
 import simpleERC721ABI from './Config/abis/simpleERC721.json'
 import marketplaceABI from './Config/abis/marketplace.json'
+import { BigNumber } from 'ethers';
+
 // import SignMessage from './SignMessage';
 
 
@@ -21,63 +23,104 @@ function App() {
   const [contract, setContract] = useState();
   const [mintAddress, setMintAddress] = useState(0);
   const [hash, setHash] = useState("")
-  const [name, setName] = useState("")
+  const [nftName, setNftName] = useState("")
+  const [symbol,setSymbol]=useState("")
+  const [imgLink,setImgLink]=useState("")
+  const [royalty,setRoyalty]=useState(0)
   const [userSignature, setUserSignature] = useState([])
   const [account, setAccount] = useState()
   const [r, setR] = useState(0)
 
 
-  var domain = [
-    { name: "name", type: "string" },
-    { name: "version", type: "string" },
-    { name: "chainId", type: "uint256" },
-    { name: "verifyingContract", type: "address" }
-  ];
+  const toTypedOrder = (
+    userAddress, tokenAddress, id, quantity, listingType, paymentTokenAddress, valueToPay, deadline, bundleTokens, bundleTokensQuantity, salt
+) => {
+    const domain = {
+        chainId: 80001,
+        name: 'Decrypt Marketplace',
+        verifyingContract:contracts.MARKETPLACE,
+        version: '1',
+    };
 
-  var sellOrders = [
-    { name: 'user', type: 'address' },
-    { name: 'tokenAddress', type: 'address' },
-    { name: 'tokenId', type: 'uint256' },
-    { name: 'quantity', type: 'uint256' },
-    { name: 'listingType', type: 'uint256' },
-    { name: 'paymentToken', type: 'address' },
-    { name: 'value', type: 'uint256' },
-    { name: 'deadline', type: 'uint256' },
-    { name: 'bundleTokens', type: 'bytes32' },
-    { name: 'salt', type: 'uint256' },
-  ];
+    const types = {
+        Order: [
+            { name: 'user', type: 'address' },
+            { name: 'tokenAddress', type: 'address' },
+            { name: 'tokenId', type: 'uint256' },
+            { name: 'quantity', type: 'uint256' },
+            { name: 'listingType', type: 'uint256' },
+            { name: 'paymentToken', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+            { name: 'bundleTokens', type: 'bytes32' },
+            { name: 'salt', type: 'uint256' },
+        ],
+    };
 
-  const domainData = {
-    name: "DecryptMarketplace",
-    version: "1",
-    chainId: 80001,  //configurable
-    verifyingContract: contracts.MARKETPLACE, //marketPlace Address
-  };
+    //hashing array of tokens IDs + array of tokens quantities
+    //same as keccak256(abi.encodePacked( <array> ))
+    let bundleTokensHash;
+    if(bundleTokens.length === 0){
+        bundleTokensHash = '0x0000000000000000000000000000000000000000000000000000000000000000';
+    }
+    else{
+        const typesArray = new Array(bundleTokens.length).fill('uint256');
+        const indexHash = ethers.utils.solidityKeccak256(typesArray,bundleTokens);
+        const arrayHash = ethers.utils.solidityKeccak256(typesArray,bundleTokensQuantity);
+        bundleTokensHash = ethers.utils.solidityKeccak256(['bytes32','bytes32'],[indexHash,arrayHash]);
+    }
+    const TIME = Math.round(new Date()/1000 + 3600000);
+    const value = {
+        user: userAddress,
+        tokenAddress: tokenAddress,
+        tokenId: id,
+        quantity: quantity,
+        listingType: listingType,
+        paymentToken:paymentTokenAddress,
+        value:valueToPay,
+        deadline: deadline,
+        bundleTokens: bundleTokensHash,
+        salt: salt,
+    };
 
+    return { domain, types, value };
+}
+  // var data = JSON.stringify({
+  //   types: {
+  //     EIP712Domain: domain,
+  //     SellOrders: sellOrders,
+  //   },
+  //   domain: domainData,
+  //   primaryType: "SellOrders",
+  //   message: message
+  // });
 
-  var message = {
-    user: account,
-    tokenAddress:"0x0Eda1c15bD5319E5fbC5BDe3858E06e1B9457fe4",
-    tokenId: '1',
-    quantity: '1',
-    listingType: '0',
-    paymentToken: '0x0000000000000000000000000000000000000000',
-    value: '1000000000000000000',
-    deadline: '1639048490',
-    bundleTokens: '0x0000000000000000000000000000000000000000000000000000000000000000',
-    salt: '123',
-  };
+  const getSignature = async (signer,...args) => {
+    const order = toTypedOrder(...args);
+    let provider = new ethers.providers.Web3Provider(window.ethereum)
 
-  var data = JSON.stringify({
-    types: {
-      EIP712Domain: domain,
-      SellOrders: sellOrders,
-    },
-    domain: domainData,
-    primaryType: "SellOrders",
-    message: message
-  });
+      const signer1 =  provider.getSigner()
+      console.log("signer is------>",signer1)
 
+    const signedTypedHash =  await signer1._signTypedData(
+        order.domain,
+        order.types,
+        order.value
+    );
+    const sig = ethers.utils.splitSignature(signedTypedHash);
+
+    return [sig.v, sig.r, sig.s];
+}
+
+const getHashedTypedData = async (...args) => {
+  const order = toTypedOrder(...args)
+
+  return ethers.utils._TypedDataEncoder.hash(
+      order.domain,
+      order.types,
+      order.value
+  );
+}
 
 
   useEffect(async () => {
@@ -97,104 +140,126 @@ function App() {
 
   }, [account])
 
-  const signMessage = async () => {
-    try {
-      console.log({ message });
-      if (!window.ethereum)
-        throw new Error("No crypto wallet found. Please install it.");
+  // const signMessage = async () => {
+  //   try {
+  //     console.log({ message });
+  //     if (!window.ethereum)
+  //       throw new Error("No crypto wallet found. Please install it.");
 
 
-      let address = await connect()
-      var r, s, v;
-      let signauteResult = await window.web3.currentProvider.sendAsync({
-        method: "eth_signTypedData_v4",
-        params: [address[0], data],
-        from: address
-      }, function (error, result) {
-        if (error) {
-          console.log(error)
-        } else {
-          const signature = result.result.substring(2);
-          console.log("signature is ----->", signature)
-          r = "0x" + signature.substring(0, 64);
-          s = "0x" + signature.substring(64, 128);
-          v = parseInt(signature.substring(128, 130), 16);
-          console.log("r s and v is----->", r, s, v)
-          let sig = [r, s, v];
-          // setUserSignature(sig)
-          localStorage.setItem('Signature', sig);
-          if (sig) {
+  //     let address = await connect()
+  //     var r, s, v;
+  //     let signauteResult = await window.web3.currentProvider.sendAsync({
+  //       method: "eth_signTypedData_v4",
+  //       params: [address[0], data],
+  //       from: address[0]
+  //     }, function (error, result) {
+  //       if (error) {
+  //         console.log(error)
+  //       } else {
+  //         const signature = result.result.substring(2);
+  //         console.log("signature is ----->", signature)
+  //         r = "0x" + signature.substring(0, 64);
+  //         s = "0x" + signature.substring(64, 128);
+  //         v = parseInt(signature.substring(128, 130), 16);
+  //         console.log("r s and v is----->", r, s, v)
+  //         let sig = [v, r, s];
+  //         localStorage.setItem('sellerV',v)
+  //         localStorage.setItem('sellerR',r)
+  //         localStorage.setItem('sellerS',s)
+  //         localStorage.setItem('Signature', sig);
+  //         if (sig) {
             
-          }
+  //         }
 
-          return sig
-        }
-      });
+  //         return sig
+  //       }
+  //     });
 
-      let sig = [r, s, v];
+  //     let sig = [r, s, v];
 
-      return {
-        r,
-        s,
-        v
-      };
-    } catch (err) {
-      console.log("error is--->", err.message);
-    }
-  };
+  //     return {
+  //       r,
+  //       s,
+  //       v
+  //     };
+  //   } catch (err) {
+  //     console.log("error is--->", err.message);
+  //   }
+  // };
 
-  const buyersignMessage = async () => {
-    try {
-      console.log({ message });
-      if (!window.ethereum)
-        throw new Error("No crypto wallet found. Please install it.");
-
-
-      let address = await connect()
-      var r, s, v;
-      let signauteResult = await window.web3.currentProvider.sendAsync({
-        method: "eth_signTypedData_v4",
-        params: [address[0], data],
-        from: address
-      }, function (error, result) {
-        if (error) {
-          console.log(error)
-        } else {
-          const signature = result.result.substring(2);
-          console.log("signature is ----->", signature)
-          r = "0x" + signature.substring(0, 64);
-          s = "0x" + signature.substring(64, 128);
-          v = parseInt(signature.substring(128, 130), 16);
-          console.log("r s and v is----->", r, s, v)
-          let sig = [r, s, v];
-          localStorage.setItem('buyerSignature',sig)
-          setUserSignature(sig)
-          if (userSignature) {
-            console.log("user signature----->", userSignature)
-          }
-
-          return sig
-        }
-      });
-
-      let sig = [r, s, v];
-
-      return {
-        r,
-        s,
-        v
-      };
-    } catch (err) {
-      console.log("error is--->", err.message);
-    }
-  };
+  // const buyersignMessage = async () => {
+  //   try {
+  //     console.log({ message });
+  //     if (!window.ethereum)
+  //       throw new Error("No crypto wallet found. Please install it.");
 
 
-  const _deploySimpleErc721 = (async (name, symbol, imgLink, royalty) => {
+  //     let address = await connect()
+  //     var r, s, v;
+  //     let signauteResult = await window.web3.currentProvider.sendAsync({
+  //       method: "eth_signTypedData_v4",
+  //       params: [address[0], data],
+  //       from: address[0]
+  //     }, function (error, result) {
+  //       if (error) {
+  //         console.log(error)
+  //       } else {
+  //         const signature = result.result.substring(2);
+  //         console.log("signature is ----->", signature)
+  //         r = "0x" + signature.substring(0, 64);
+  //         s = "0x" + signature.substring(64, 128);
+  //         v = parseInt(signature.substring(128, 130), 16);
+        
+  //         let sig=[{v: v},{r: r},{s: s}]
+  //         console.log("v r and s is----->",sig)
+         
+  //         localStorage.setItem('buyerV',v)
+  //         localStorage.setItem('buyerR',r)
+  //         localStorage.setItem('buyerS',s)
+  //         setUserSignature(sig)
+  //         if (userSignature) {
+  //           console.log("user signature----->", userSignature)
+  //         }
+
+  //         return sig
+  //       }
+  //     });
+
+  //     let sig = [r, s, v];
+
+  //     return {
+  //       r,
+  //       s,
+  //       v
+  //     };
+  //   } catch (err) {
+  //     console.log("error is--->", err.message);
+  //   }
+  // };
+
+
+  const _deploySimpleErc721 = (async () => {
     console.log("functon is called in app");
-    let res = await deploySimpleErc721(name, symbol, imgLink, royalty);
-
+    console.log(nftName,symbol,imgLink,royalty);
+    let res = await deploySimpleErc721(nftName, symbol, imgLink, royalty);
+    const TIME = Math.round(new Date()/1000 + 3600000);
     setHash(res)
+    const sellerOrder = [
+      "0x09b05f922a87e29874A6f04Cd809662daFCC2205","0x5c1D49BB2bab0440B2aE05C14782191ff5a72282",
+      1,1,0,
+      '0xED2411155E82aCc7e4Ce2d910c41aba36d7C99aB',
+     "0000000000000000000" ,
+     TIME,[],[],123
+    ];
+   
+    let sellerSign=await getSignature(account,...sellerOrder);
+         localStorage.setItem('sellerV',sellerSign[0])
+            localStorage.setItem('sellerR',sellerSign[1])
+            localStorage.setItem('sellerS',sellerSign[2])
+    // localStorage.setItem("newSigner",sellerSign);
+
+    console.log("seller sign is------->",sellerSign)
 
 
   })
@@ -234,9 +299,10 @@ function App() {
     }
 
     let nftmint = await res.mint(account, 1)
+   
     if (nftmint) {
       console.log("nft is minted", nftmint);
-      signMessage()
+     
       
     }
 
@@ -251,32 +317,75 @@ function App() {
       console.log("marketplace contract is -------->",marketPlaceContract)
       
       let nft=localStorage.getItem('NFT')
-      console.log("account and mintaddress is",account,nft,ethers.utils.formatUnits(ethers.utils.parseEther('1.0'), 18));
-      let sellOrders=[
-        account,
-        "0x0Eda1c15bD5319E5fbC5BDe3858E06e1B9457fe4",
-        1,1,0,
-        '0x58De09Eb0CdB54D9861aC1B9c17B3325E8d36c03',1,1642464000,[],[],123]
+      console.log("account and mintaddress is",account,nft);
+    
       
-      let sellerSign=localStorage.getItem('Signature')
-      let buySign=localStorage.getItem('buyerSignature');
+      
 
-      const TIME = Math.round(new Date()/1000 + 3600);
+      const TIME = Math.round(new Date()/1000 + 3600000);
+      console.log("time is ------>",TIME)
       const sellerOrder = [
-        account, "0x0Eda1c15bD5319E5fbC5BDe3858E06e1B9457fe4",
+        "0x09b05f922a87e29874A6f04Cd809662daFCC2205","0x5c1D49BB2bab0440B2aE05C14782191ff5a72282",
         1,1,0,
-        '0x58De09Eb0CdB54D9861aC1B9c17B3325E8d36c03',
-        ethers.utils.formatUnits(ethers.utils.parseEther('1.0'), 18),
-        TIME-3700,[],[],Math.round(Math.random()*1000)
+        '0xED2411155E82aCc7e4Ce2d910c41aba36d7C99aB',
+       "0" ,
+       TIME,[],[],123
       ];
+
+      const buyerOrder = [
+        account, "0x5c1D49BB2bab0440B2aE05C14782191ff5a72282",
+        1,1,0,
+        '0xED2411155E82aCc7e4Ce2d910c41aba36d7C99aB',
+       "0" ,
+       TIME+10000,[],[],123
+      ];
+      console.log("seller is mk")
+      let sellerV=localStorage.getItem('sellerV')
+      sellerV=parseInt(sellerV);
+      // sellerV=BigNumber.from(sellerV)
+
+      let sellerR=localStorage.getItem('sellerR')
+      let sellerS=localStorage.getItem('sellerS')
+
+      let buyerV=localStorage.getItem('buyerV')
+      // buyerV= BigNumber.from(buyerV)
+      let buyerR=localStorage.getItem('buyerR')
+      let buyerS=localStorage.getItem('buyerS')
+      // let buySign=localStorage.getItem('buyerSignature');
       
       console.log("SellerOder",sellerOrder);
-      let comleteOrder=await marketPlaceContract.completeOrder(sellerOrder,sellerSign,sellerOrder,buySign);
-      console.log("complete order function is ------->",comleteOrder)
+      console.log("buyerOder",buyerOrder);
+     
+      // console.log("buySign",buySign,ethers.utils.parseEther("1.0"));
+    
+    //  let sellerSign=await getSignature("0x09b05f922a87e29874A6f04Cd809662daFCC2205",...sellerOrder)
+     let buySign=await getSignature(account,...buyerOrder);
+
+     console.log("seller sign and buy sign",buySign)
+      
+      console.log("marketplace address",marketPlaceContract);
+      const options = {
+        from: account,
+        gasPrice: 10000000000,
+        gasLimit: 9000000,
+        value: ethers.utils.parseEther("0")
+      }
+
+      
+
+
+      // const web3 = new Web3(window.ethereum);
+
+      // const cIns = new web3.eth.Contract(marketplaceABI, marketPlaceContract.address);
+
+      // let completeOrder = await cIns.methods.completeOrder(sellerOrder,sellerSign,buyerOrder,buySign).send({from: account, value: ethers.utils.parseEther("0.01")});
+
+      let completeOrder= await marketPlaceContract.completeOrder(sellerOrder,buySign,buyerOrder,buySign,options);
+      console.log("complete order function is ------->",completeOrder)
 
      
     }catch(e){
-      console.log("buy error is----->",e.message)
+      console.log("buy error is----->",e)
     }
   
   })
@@ -292,46 +401,62 @@ function App() {
 
       <label>
         Name:
-        <input type="text" name="name" />
+        <input type="text" name="name" onChange={(e)=>{
+          console.log(e.target.value)
+          setNftName(e.target.value)
+        }} />
       </label>
 
 
       <label>
         Symbol:
-        <input type="text" name="name" />
+        <input type="text" name="name" onChange={(e)=>{
+          setSymbol(e.target.value)
+        }} />
       </label>
 
 
       <label>
         image-link:
-        <input type="text" name="name" />
+        <input type="text" name="name"
+         onChange={(e)=>{
+          setImgLink(e.target.value)
+        }} />
       </label>
 
 
       <label>
         Royalty:
-        <input type="text" name="name" />
+        <input type="text" name="name" 
+        onChange={(e)=>{
+          let no=e.target.value;
+          no=parseInt(no)*100;
+          console.log(
+            "no is",no
+          )
+          setRoyalty(no)
+        }}/>
       </label>
 
 
       <label>
         NFT Quantity:
-        <input type="text" name="name" />
+        <input type="text" name="name" value={1}/>
       </label>
 
 
 
       <button onClick={() => {
-        _deploySimpleErc721("MJ", "MJJ", "mjcom", 1000)
+        _deploySimpleErc721()
       }}>Deploy Simple ERC 721</button>
 
       <button onClick={() => {
         _mint()
       }}>Create NFT</button>
 
-<button onClick={() => {
+{/* <button onClick={() => {
         buyersignMessage();
-      }}>Create Signature for buyer</button>
+      }}>Create Signature for buyer</button> */}
 
 
       <button onClick={() => {
