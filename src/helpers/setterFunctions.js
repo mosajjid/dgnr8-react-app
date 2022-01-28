@@ -35,7 +35,7 @@ export const deploySimpleErc1155 = async (imgLink,royalty) => {
 
     if(cont){
         
-        let res = await cont.deploySimpleErc1155(imgLink,royalty);
+        let res = await cont.deploySimpleERC1155(imgLink,royalty);
         if(res){
             await delay(35000);
             console.log("res is-------->",res.hash)

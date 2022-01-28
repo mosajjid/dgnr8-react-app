@@ -1,161 +1,214 @@
-import { useState, useRef } from "react";
-import { ethers } from "ethers";
-import contracts from "./Config/contracts";
-import ErrorMessage from "./ErrorMessage";
-import {connect} from "./helpers/currentWalletHelper"
+import MetaMaskOnboarding from "@metamask/onboarding";
+import { recoverTypedSignature_v4 as recoverTypedSignatureV4 } from 'eth-sig-util';
+// import { recoverTypedSignature_v4 as recoverTypedSignatureV4 } from '@metamask/eth-sig-util';
+//import "./resolve_fallback";
+import React, {useState, useEffect} from 'react';
+// import {Button, InputGroup, FormControl} from 'react-bootstrap';
+
+import { ethers } from 'ethers';
 
 
+const SignTypedDataV4 = () => {
+    const [domainName, setDomainName] = useState("Decrypt Marketplace");
+    const [domainVerifyingContract, setDomainVerifyingContract] = useState("0x8F2910773e07CC0bcd333F81DAF5e2B3abA4F06A");
+    const [domainVerifyingContractVersion, setDomainVerifyingContractVersion] = useState("1");
 
-var domain = [
-  { name: "name", type: "string" },
-  { name: "version", type: "string" },
-  { name: "chainId", type: "uint256" },
-  { name: "verifyingContract", type: "address" }
-];
+    const [name, setName] = useState("0x09b05f922a87e29874A6f04Cd809662daFCC2205");
+    const [tokenAddress, setTokenAddress] = useState("0xACFa67dcc5161cc0aA25517f7a07520C41dD3046");
+    const [tokenId, setTokenId] = useState(1);
+    const [quantity, setQuantity] = useState(1);
+    const [listingType, setListingType] = useState(0);
+    const [paymentToken, setPaymentToken] = useState("0xED2411155E82aCc7e4Ce2d910c41aba36d7C99aB");
+    const [value, setValue] = useState(10000000000);
+    const [deadline, setDeadline] = useState(1646114315);
+    const [bundleTokens, setBundleTokens] = useState("0x0000000000000000000000000000000000000000000000000000000000000000");
+    const [salt, setSalt] = useState(123);
+    const [r, setR] = useState();
+    const [s, setS] = useState();
+    const [v, setV] = useState();
 
-var sellOrders = [
-      { name: 'user', type: 'address' },
-  { name: 'tokenAddress', type: 'address' },
-  { name: 'tokenId', type: 'uint256' },
-  { name: 'quantity', type: 'uint256' },
-  { name: 'listingType', type: 'uint256' },
-  { name: 'paymentToken', type: 'address' },
-  { name: 'value', type: 'uint256' },
-  { name: 'deadline', type: 'uint256' },
-  { name: 'bundleTokens', type: 'bytes32' },
-  { name: 'salt', type: 'uint256' },
-];
+    const [signature, setSignature] = useState();
 
-const domainData = {
-  name: "DecryptMarketplace",
-  version: "1",
-  chainId: 80001,  //configurable
-  verifyingContract: contracts.MARKETPLACE, //marketPlace Address
-};
+    const [chainId, setChainId] = useState("not connected");
+    const [recoveredAddress, setRecoveredAddress] = useState();
 
 
-var message = {
-  user: '0xD022311DAcaa30f8396cA9d2C4662a2eF083A1Dd',
-  tokenAddress:'0x1F0Ad1F5280adF7AD971c0f911Cc1F7A882033C5',
-  tokenId: '1',
-  quantity: '1',
-  listingType: '0',
-  paymentToken: '0x0000000000000000000000000000000000000000',
-  value: '1000000000000000000',
-  deadline: '1639048490',
-  bundleTokens: '0x0000000000000000000000000000000000000000000000000000000000000000',
-  salt: '123',
-};
+    const ethereum = window.ethereum;
 
-var data = JSON.stringify({
-  types: {
-      EIP712Domain: domain,
-      SellOrders: sellOrders,
-  },
-  domain: domainData,
-  primaryType: "SellOrders",
-  message: message
-});
+    useEffect(() => {
+        function handleNewAccounts(newAccounts) {
+            setName(newAccounts);
+        }
+        if (MetaMaskOnboarding.isMetaMaskInstalled()) {
+            ethereum
+                .request({ method: 'eth_requestAccounts' })
+                .then(handleNewAccounts);
+            ethereum.on('accountsChanged', handleNewAccounts);
 
+            ethereum.request({
+                method: 'eth_chainId',
+            }).then(setChainId);
+        }
+    }, []);
 
-const signMessage = async () => {
-  try {
-    console.log({ message });
-    if (!window.ethereum)
-      throw new Error("No crypto wallet found. Please install it.");
-
-    await window.ethereum.send("eth_requestAccounts");
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    let address=await connect()
-    var r,s,v;
-    await window.web3.currentProvider.sendAsync({
-    method: "eth_signTypedData_v4",
-    params: [address[0], data],
-    from: address
-  }, function(error, result) {
-    if (error) { 
-      console.log(error)
-    } else {
-      const signature = result.result.substring(2);
-       r = "0x" + signature.substring(0, 64);
-       s = "0x" + signature.substring(64, 128);
-       v = parseInt(signature.substring(128, 130), 16);
-       console.log("r s and v is----->",r,s,v)
+    const getMsgParams = () => {
+        const msgParams = {
+            domain: {
+                chainId: chainId.toString(),
+                name: domainName.toString(),
+                verifyingContract: domainVerifyingContract.toString(),
+                version: domainVerifyingContractVersion.toString(),
+            },
+            message: {
+                user: name.toString(),
+                tokenAddress: tokenAddress.toString(),
+                tokenId: tokenId.toString(),
+                quantity: quantity.toString(),
+                listingType: listingType.toString(),
+                paymentToken: paymentToken.toString(),
+                value: value.toString(),
+                deadline: deadline.toString(),
+                bundleTokens: bundleTokens.toString(),
+                salt: salt.toString(),
+            },
+            primaryType: 'Order',
+            types: {
+                EIP712Domain: [
+                    { name: 'name', type: 'string' },
+                    { name: 'version', type: 'string' },
+                    { name: 'chainId', type: 'uint256' },
+                    { name: 'verifyingContract', type: 'address' },
+                ],
+                Order: [
+                    { name: 'user', type: 'address' },
+                    { name: 'tokenAddress', type: 'address' },
+                    { name: 'tokenId', type: 'uint256' },
+                    { name: 'quantity', type: 'uint256' },
+                    { name: 'listingType', type: 'uint256' },
+                    { name: 'paymentToken', type: 'address' },
+                    { name: 'value', type: 'uint256' },
+                    { name: 'deadline', type: 'uint256' },
+                    { name: 'bundleTokens', type: 'bytes32' },
+                    { name: 'salt', type: 'uint256' },
+                ],
+            },
+        };
+        return msgParams;
     }
-  });
-  let sig = [r, s, v];
- if(sig){
-   return sig;
- }
-console.log("signature is ------->",sig)
-    return {
-      r,
-      s,
-      v
-    };
-  } catch (err) {
-    console.log("error is--->",err.message);
-  }
-};
 
-export default function SignMessage() {
-  const resultBox = useRef();
-  const [signatures, setSignatures] = useState([]);
-  const [error, setError] = useState();
-
-  const handleSign = async (e) => {
-    e.preventDefault();
-    const data = new FormData(e.target);
-    setError();
-    const sig = await signMessage();
-    if (sig) {
-      setSignatures([...signatures, sig]);
-      console.log("signature is------->",sig);
-      localStorage.setItem('Signature', sig.signature);
+    const sign = async () => {
+        try {
+            const sign = await ethereum.request({
+                method: 'eth_signTypedData_v4',
+                params: [name[0], JSON.stringify(getMsgParams())],
+            });
+            const splitSignature = ethers.utils.splitSignature(sign);
+            setSignature(splitSignature);
+            setR(splitSignature.r);
+            setS(splitSignature.s);
+            setV(splitSignature.v);
+        } catch (err) {
+            console.error(err);
+        }
     }
-  };
 
-  return (
-    <form className="m-4" onSubmit={handleSign}>
-      <div className="credit-card w-full shadow-lg mx-auto rounded-xl bg-white">
-        <main className="mt-4 p-4">
-          <h1 className="text-xl font-semibold text-gray-700 text-center">
-            {/* Sign messages */}
-          </h1>
-          <div className="">
-            <div className="my-3">
-              
-            </div>
-          </div>
-        </main>
-        <footer className="p-4">
-          <button
-            type="submit"
-            className="btn btn-primary submit-button focus:ring focus:outline-none w-full"
-          >
-            Sign message
-          </button>
-          <ErrorMessage message={error} />
-        </footer>
-        {signatures.map((sig, idx) => {
-          return (
-            <div className="p-2" key={sig}>
-              <div className="my-3">
-                
-                <p>Signer: {sig.v}</p>
-                {/* <textarea
-                  type="text"
-                  readOnly
-                  ref={resultBox}
-                  className="textarea w-full h-24 textarea-bordered focus:ring focus:outline-none"
-                  placeholder="Generated signature"
-                  value={sig.signature}
-                /> */}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </form>
-  );
+    const recover = async () => {
+        console.log("Recovering...")
+        try {
+            const joinedSignature = ethers.utils.joinSignature(signature);
+            const recoveredAddressFromV4 = recoverTypedSignatureV4({
+                data: getMsgParams(),
+                sig: joinedSignature
+            });
+            setRecoveredAddress(recoveredAddressFromV4);
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    return (
+        <div>
+            {/* <InputGroup className="mb-3">
+                <InputGroup.Text>chainId</InputGroup.Text>
+                <FormControl value={chainId} onChange={(e) => {setChainId(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>Verifying Contract Name</InputGroup.Text>
+                <FormControl value={domainName} onChange={(e) => {setDomainName(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>Verifying Contract Address</InputGroup.Text>
+                <FormControl value={domainVerifyingContract} onChange={(e) => {setDomainVerifyingContract(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>Verifying Contract Version</InputGroup.Text>
+                <FormControl value={domainVerifyingContractVersion} onChange={(e) => {setDomainVerifyingContractVersion(e.target.value)}}/>
+            </InputGroup>
+            <br/>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>user</InputGroup.Text>
+                <FormControl value={name} onChange={(e) => {setName(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>tokenAddress</InputGroup.Text>
+                <FormControl value={tokenAddress} onChange={(e) => {setTokenAddress(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>tokenId</InputGroup.Text>
+                <FormControl value={tokenId} onChange={(e) => {setTokenId(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>quantity</InputGroup.Text>
+                <FormControl value={quantity} onChange={(e) => {setQuantity(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>listingType</InputGroup.Text>
+                <FormControl value={listingType} onChange={(e) => {setListingType(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>paymentToken</InputGroup.Text>
+                <FormControl value={paymentToken} onChange={(e) => {setPaymentToken(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>value</InputGroup.Text>
+                <FormControl value={value} onChange={(e) => {setValue(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>deadline</InputGroup.Text>
+                <FormControl value={deadline} onChange={(e) => {setDeadline(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>bundleTokens</InputGroup.Text>
+                <FormControl value={bundleTokens} onChange={(e) => {setBundleTokens(e.target.value)}}/>
+            </InputGroup>
+            <InputGroup className="mb-3">
+                <InputGroup.Text>salt</InputGroup.Text>
+                <FormControl value={salt} onChange={(e) => {setSalt(e.target.value)}}/>
+            </InputGroup>
+
+
+            <Button size="lg" onClick={sign}>Sign</Button>
+            <table>
+                <tr>Signature:</tr>
+                <InputGroup className="mb-3">
+                    <InputGroup.Text>r</InputGroup.Text>
+                    <FormControl value={r} onChange={(e) => {setR(e.target.value)}}/>
+                </InputGroup>
+                <InputGroup className="mb-3">
+                    <InputGroup.Text>s</InputGroup.Text>
+                    <FormControl value={s} onChange={(e) => {setS(e.target.value)}}/>
+                </InputGroup>
+                <InputGroup className="mb-3">
+                    <InputGroup.Text>v</InputGroup.Text>
+                    <FormControl value={v} onChange={(e) => {setV(e.target.value)}}/>
+                </InputGroup>
+            </table>
+
+            <Button size="lg" onClick={recover}>Recover address</Button>
+            <p>Recovered: {recoveredAddress}</p> */}
+            <p>Hello</p>
+        </div>
+    );
 }
+
+export default SignTypedDataV4;
